@@ -1,0 +1,6 @@
+{
+  "name": "NatokFlix",
+  "description": "Stream Bengali Natok, Shorts & Earn Rewards with bKash and Nagad withdrawals",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

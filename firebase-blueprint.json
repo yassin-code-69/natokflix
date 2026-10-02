@@ -1,0 +1,41 @@
+{
+  "entities": {
+    "Video": {
+      "title": "Video",
+      "description": "A video entity",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "thumbnailUrl": { "type": "string" },
+        "description": { "type": "string" },
+        "duration": { "type": "string" },
+        "youtubeId": { "type": "string" },
+        "viewCount": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "userId": { "type": "string" }
+      },
+      "required": ["title", "youtubeId", "createdAt", "userId"]
+    },
+    "Trending": {
+      "title": "Trending",
+      "description": "A trending video entity",
+      "type": "object",
+      "properties": {
+        "videoId": { "type": "string" },
+        "score": { "type": "number" },
+        "userId": { "type": "string" }
+      },
+      "required": ["videoId", "score", "userId"]
+    }
+  },
+  "firestore": {
+    "videos": {
+      "schema": { "$ref": "Video" },
+      "description": "Collection of videos"
+    },
+    "trending": {
+      "schema": { "$ref": "Trending" },
+      "description": "Collection of trending videos"
+    }
+  }
+}
