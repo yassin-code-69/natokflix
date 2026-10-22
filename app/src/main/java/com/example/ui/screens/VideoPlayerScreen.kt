@@ -118,7 +118,6 @@ fun VideoPlayerScreen(
     var isLiked by remember { mutableStateOf(false) }
     var isSaved by remember { mutableStateOf(false) }
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
-    var isDirectYouTubeMode by remember { mutableStateOf(false) }
 
     var showUrlDialog by remember { mutableStateOf(false) }
     var customUrlInput by remember { mutableStateOf("") }
@@ -131,66 +130,133 @@ fun VideoPlayerScreen(
         }
     }
 
-    // HTML5 YouTube Player with JavaScript API bridge for custom playback controls
-    val embedHtml = remember(video.youtubeVideoId) {
+    val videoPlayerUrl = remember(video.youtubeVideoId) {
+        "https://m.youtube.com/watch?v=${video.youtubeVideoId}"
+    }
+
+    val cleanPlayerScript = remember {
         """
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-            <style>
-                * { box-sizing: border-box; }
-                body { margin: 0; padding: 0; background-color: #000; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; }
-                #player { width: 100%; height: 100%; border: none; }
-            </style>
-        </head>
-        <body>
-            <iframe id="player"
-                src="https://www.youtube-nocookie.com/embed/${video.youtubeVideoId}?autoplay=1&playsinline=1&controls=1&rel=0&modestbranding=1&enablejsapi=1&origin=https://www.youtube.com&widget_referrer=https://www.youtube.com"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                referrerpolicy="strict-origin-when-cross-origin"
-                allowfullscreen>
-            </iframe>
-            <script>
-                function playVideo() {
-                    var iframe = document.getElementById('player');
-                    if (iframe && iframe.contentWindow) {
-                        iframe.contentWindow.postMessage('{"event":"command","func":"playVideo","args":""}', '*');
-                    }
+        (function() {
+            function injectNatokCss() {
+                var styleId = 'natokflix-seamless-style';
+                if (!document.getElementById(styleId)) {
+                    var style = document.createElement('style');
+                    style.id = styleId;
+                    style.textContent = ''
+                        + 'header, ytm-mobile-topbar-renderer, .mobile-topbar-header, ytm-header-bar, #header-bar, #masthead, .header-bar, '
+                        + 'ytm-app-banner-renderer, #app-banner, .app-banner, .ytm-app-banner-renderer, ytm-pivot-bar-renderer, .pivot-bar, '
+                        + 'ytm-comment-section-renderer, #comments, .watch-below-the-player, ytm-item-section-renderer, .slim-video-metadata-actions, '
+                        + 'ytm-standalone-badge-supported-renderer, .ytm-carousel-header-wrapper, ytm-search-box, .mobile-topbar-renderer, '
+                        + '.ytp-youtube-button, .ytp-watermark, .ytp-title, .ytp-share-button, .ytp-copylink-button, .ytp-show-cards-title, '
+                        + '.ytp-pause-overlay, .ytm-autonav-bar, ytm-single-column-browse-results-renderer { '
+                        + '   display: none !important; visibility: hidden !important; height: 0 !important; max-height: 0 !important; opacity: 0 !important; pointer-events: none !important; margin: 0 !important; padding: 0 !important; '
+                        + '} '
+                        + 'html, body { margin: 0 !important; padding: 0 !important; background: #000000 !important; overflow: hidden !important; width: 100% !important; height: 100% !important; } '
+                        + '#player-container-id, .player-container, #player, .video-stream-container { '
+                        + '   position: fixed !important; top: 0 !important; left: 0 !important; width: 100% !important; height: 100% !important; z-index: 999999 !important; background: #000000 !important; margin: 0 !important; padding: 0 !important; '
+                        + '} '
+                        + 'video { width: 100% !important; height: 100% !important; object-fit: contain !important; background: #000000 !important; }';
+                    (document.head || document.documentElement).appendChild(style);
                 }
-                function pauseVideo() {
-                    var iframe = document.getElementById('player');
-                    if (iframe && iframe.contentWindow) {
-                        iframe.contentWindow.postMessage('{"event":"command","func":"pauseVideo","args":""}', '*');
-                    }
-                }
-                function seekRelative(seconds) {
-                    var iframe = document.getElementById('player');
-                    if (iframe && iframe.contentWindow) {
-                        iframe.contentWindow.postMessage('{"event":"command","func":"seekTo","args":[' + (seconds > 0 ? '+10' : '-10') + ', true]}', '*');
-                    }
-                }
-                function replayVideo() {
-                    var iframe = document.getElementById('player');
-                    if (iframe && iframe.contentWindow) {
-                        iframe.contentWindow.postMessage('{"event":"command","func":"seekTo","args":[0, true]}', '*');
-                        iframe.contentWindow.postMessage('{"event":"command","func":"playVideo","args":""}', '*');
-                    }
-                }
-                window.addEventListener('message', function(event) {
-                    try {
-                        var data = JSON.parse(event.data);
-                        if (data.event === 'onStateChange' && data.info === 0) {
-                            if (window.AndroidBridge && window.AndroidBridge.onVideoEnded) {
-                                window.AndroidBridge.onVideoEnded();
-                            }
+            }
+
+            function hookNatokVideo() {
+                var v = document.querySelector('video');
+                if (v && !v._natokHooked) {
+                    v._natokHooked = true;
+                    v.addEventListener('play', function() {
+                        if (window.AndroidBridge && window.AndroidBridge.onPlaybackStateChanged) {
+                            window.AndroidBridge.onPlaybackStateChanged(true);
                         }
-                    } catch(e) {}
+                    });
+                    v.addEventListener('pause', function() {
+                        if (window.AndroidBridge && window.AndroidBridge.onPlaybackStateChanged) {
+                            window.AndroidBridge.onPlaybackStateChanged(false);
+                        }
+                    });
+                    v.addEventListener('ended', function() {
+                        if (window.AndroidBridge && window.AndroidBridge.onVideoEnded) {
+                            window.AndroidBridge.onVideoEnded();
+                        }
+                    });
+                }
+                var skipBtn = document.querySelector('.ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-skip-ad-button');
+                if (skipBtn) {
+                    try { skipBtn.click(); } catch(e) {}
+                }
+            }
+
+            injectNatokCss();
+            hookNatokVideo();
+
+            if (!window._natokObserverSet) {
+                window._natokObserverSet = true;
+                var observer = new MutationObserver(function() {
+                    injectNatokCss();
+                    hookNatokVideo();
                 });
-            </script>
-        </body>
-        </html>
+                if (document.documentElement || document.body) {
+                    observer.observe(document.documentElement || document.body, { childList: true, subtree: true });
+                }
+            }
+
+            var count = 0;
+            var timer = setInterval(function() {
+                injectNatokCss();
+                hookNatokVideo();
+                count++;
+                if (count > 25) clearInterval(timer);
+            }, 200);
+        })();
         """.trimIndent()
+    }
+
+    fun sendPlayerCommand(command: String, arg: Int = 0) {
+        val js = when (command) {
+            "play" -> """
+                (function() {
+                    var v = document.querySelector('video');
+                    if (v) { v.play().catch(function(){}); }
+                    var ifr = document.querySelector('iframe');
+                    if (ifr && ifr.contentWindow) { ifr.contentWindow.postMessage('{"event":"command","func":"playVideo","args":""}', '*'); }
+                })();
+            """.trimIndent()
+            "pause" -> """
+                (function() {
+                    var v = document.querySelector('video');
+                    if (v) { v.pause(); }
+                    var ifr = document.querySelector('iframe');
+                    if (ifr && ifr.contentWindow) { ifr.contentWindow.postMessage('{"event":"command","func":"pauseVideo","args":""}', '*'); }
+                })();
+            """.trimIndent()
+            "seek" -> """
+                (function() {
+                    var v = document.querySelector('video');
+                    if (v) {
+                        v.currentTime = Math.max(0, Math.min((v.duration || 999999), (v.currentTime || 0) + ($arg)));
+                    }
+                    var ifr = document.querySelector('iframe');
+                    if (ifr && ifr.contentWindow) {
+                        ifr.contentWindow.postMessage('{"event":"command","func":"seekTo","args":[' + ($arg > 0 ? '+10' : '-10') + ', true]}', '*');
+                    }
+                })();
+            """.trimIndent()
+            "replay" -> """
+                (function() {
+                    var v = document.querySelector('video');
+                    if (v) { v.currentTime = 0; v.play().catch(function(){}); }
+                    var ifr = document.querySelector('iframe');
+                    if (ifr && ifr.contentWindow) {
+                        ifr.contentWindow.postMessage('{"event":"command","func":"seekTo","args":[0, true]}', '*');
+                        ifr.contentWindow.postMessage('{"event":"command","func":"playVideo","args":""}', '*');
+                    }
+                })();
+            """.trimIndent()
+            else -> ""
+        }
+        if (js.isNotEmpty()) {
+            webViewRef?.evaluateJavascript(js, null)
+        }
     }
 
     Box(
@@ -228,45 +294,38 @@ fun VideoPlayerScreen(
                                 fun onVideoEnded() {
                                     onVideoEnded()
                                 }
+
+                                @android.webkit.JavascriptInterface
+                                fun onPlaybackStateChanged(isPlaying: Boolean) {
+                                    onTogglePlayPause(isPlaying)
+                                }
                             }, "AndroidBridge")
                             webChromeClient = WebChromeClient()
                             webViewClient = object : WebViewClient() {
+                                override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                                    super.onPageStarted(view, url, favicon)
+                                    view?.evaluateJavascript(cleanPlayerScript, null)
+                                }
+
                                 override fun onPageFinished(view: WebView?, url: String?) {
                                     super.onPageFinished(view, url)
-                                    if (isDirectYouTubeMode) {
-                                        val hideHeaderCss = """
-                                            javascript:(function() {
-                                                var style = document.createElement('style');
-                                                style.innerHTML = 'header, ytm-mobile-topbar-renderer, ytm-pivot-bar-renderer, .pivot-bar, ytm-comment-section-renderer, #comments, .watch-below-the-player { display: none !important; }';
-                                                document.head.appendChild(style);
-                                            })()
-                                        """.trimIndent()
-                                        view?.evaluateJavascript(hideHeaderCss, null)
-                                    }
+                                    view?.evaluateJavascript(cleanPlayerScript, null)
                                 }
                             }
-                            if (isDirectYouTubeMode) {
-                                loadUrl("https://m.youtube.com/watch?v=${video.youtubeVideoId}")
-                            } else {
-                                loadDataWithBaseURL("https://www.youtube.com", embedHtml, "text/html", "UTF-8", "https://www.youtube.com")
-                            }
+                            loadUrl(videoPlayerUrl)
                             webViewRef = this
                         }
                     },
                     update = { webView ->
                         webViewRef = webView
-                        if (isDirectYouTubeMode) {
-                            if (webView.url?.contains(video.youtubeVideoId) != true) {
-                                webView.loadUrl("https://m.youtube.com/watch?v=${video.youtubeVideoId}")
-                            }
-                        } else {
-                            webView.loadDataWithBaseURL("https://www.youtube.com", embedHtml, "text/html", "UTF-8", "https://www.youtube.com")
+                        if (webView.url?.contains(video.youtubeVideoId) != true) {
+                            webView.loadUrl(videoPlayerUrl)
                         }
                     },
                     modifier = Modifier.fillMaxSize()
                 )
 
-                // Floating Controls in Fullscreen
+                // Floating Top Controls in Fullscreen
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -298,6 +357,60 @@ fun VideoPlayerScreen(
                             fontWeight = FontWeight.Bold,
                             color = NatokGold
                         )
+                    }
+                }
+
+                // Floating Bottom Controls Pill in Fullscreen
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 20.dp)
+                        .background(Color.Black.copy(alpha = 0.75f), RoundedCornerShape(24.dp))
+                        .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(24.dp))
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(
+                        onClick = { sendPlayerCommand("seek", -10) },
+                        modifier = Modifier.size(38.dp)
+                    ) {
+                        Icon(Icons.Default.FastRewind, contentDescription = "Rewind 10s", tint = Color.White, modifier = Modifier.size(22.dp))
+                    }
+
+                    IconButton(
+                        onClick = {
+                            val newPlaying = !isPlayerPlaying
+                            onTogglePlayPause(newPlaying)
+                            sendPlayerCommand(if (newPlaying) "play" else "pause")
+                        },
+                        modifier = Modifier
+                            .size(44.dp)
+                            .background(NatokRed, CircleShape)
+                    ) {
+                        Icon(
+                            imageVector = if (isPlayerPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            contentDescription = "Play/Pause",
+                            tint = Color.White,
+                            modifier = Modifier.size(26.dp)
+                        )
+                    }
+
+                    IconButton(
+                        onClick = { sendPlayerCommand("seek", 10) },
+                        modifier = Modifier.size(38.dp)
+                    ) {
+                        Icon(Icons.Default.FastForward, contentDescription = "Forward 10s", tint = Color.White, modifier = Modifier.size(22.dp))
+                    }
+
+                    IconButton(
+                        onClick = {
+                            sendPlayerCommand("replay")
+                            onTogglePlayPause(true)
+                        },
+                        modifier = Modifier.size(38.dp)
+                    ) {
+                        Icon(Icons.Default.Replay, contentDescription = "Replay", tint = Color(0xFFDDDDDD), modifier = Modifier.size(20.dp))
                     }
                 }
             }
@@ -351,32 +464,6 @@ fun VideoPlayerScreen(
                                 Text("URL পেস্ট", fontSize = 11.sp, color = Color.White)
                             }
 
-                            Spacer(modifier = Modifier.width(6.dp))
-
-                            // Player Direct/Embed Switch
-                            Button(
-                                onClick = { isDirectYouTubeMode = !isDirectYouTubeMode },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = if (isDirectYouTubeMode) NatokRed else Color(0xFF262638)
-                                ),
-                                shape = RoundedCornerShape(16.dp),
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                                modifier = Modifier.height(32.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Tv,
-                                    contentDescription = null,
-                                    tint = NatokGold,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = if (isDirectYouTubeMode) "ডাইরেক্ট মোড" else "স্মুথ প্লেয়ার",
-                                    fontSize = 11.sp,
-                                    color = Color.White
-                                )
-                            }
-
                             Spacer(modifier = Modifier.width(8.dp))
 
                             // Total Session Coins Badge
@@ -398,7 +485,7 @@ fun VideoPlayerScreen(
                     }
                 }
 
-                // In-App YouTube Player Box
+                // In-App Seamless Video Player Box
                 item {
                     Box(
                         modifier = Modifier
@@ -428,39 +515,32 @@ fun VideoPlayerScreen(
                                         fun onVideoEnded() {
                                             onVideoEnded()
                                         }
+
+                                        @android.webkit.JavascriptInterface
+                                        fun onPlaybackStateChanged(isPlaying: Boolean) {
+                                            onTogglePlayPause(isPlaying)
+                                        }
                                     }, "AndroidBridge")
                                     webChromeClient = WebChromeClient()
                                     webViewClient = object : WebViewClient() {
+                                        override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                                            super.onPageStarted(view, url, favicon)
+                                            view?.evaluateJavascript(cleanPlayerScript, null)
+                                        }
+
                                         override fun onPageFinished(view: WebView?, url: String?) {
                                             super.onPageFinished(view, url)
-                                            if (isDirectYouTubeMode) {
-                                                val hideHeaderCss = """
-                                                    javascript:(function() {
-                                                        var style = document.createElement('style');
-                                                        style.innerHTML = 'header, ytm-mobile-topbar-renderer, ytm-pivot-bar-renderer, .pivot-bar, ytm-comment-section-renderer, #comments, .watch-below-the-player { display: none !important; }';
-                                                        document.head.appendChild(style);
-                                                    })()
-                                                """.trimIndent()
-                                                view?.evaluateJavascript(hideHeaderCss, null)
-                                            }
+                                            view?.evaluateJavascript(cleanPlayerScript, null)
                                         }
                                     }
-                                    if (isDirectYouTubeMode) {
-                                        loadUrl("https://m.youtube.com/watch?v=${video.youtubeVideoId}")
-                                    } else {
-                                        loadDataWithBaseURL("https://www.youtube.com", embedHtml, "text/html", "UTF-8", "https://www.youtube.com")
-                                    }
+                                    loadUrl(videoPlayerUrl)
                                     webViewRef = this
                                 }
                             },
                             update = { webView ->
                                 webViewRef = webView
-                                if (isDirectYouTubeMode) {
-                                    if (webView.url?.contains(video.youtubeVideoId) != true) {
-                                        webView.loadUrl("https://m.youtube.com/watch?v=${video.youtubeVideoId}")
-                                    }
-                                } else {
-                                    webView.loadDataWithBaseURL("https://www.youtube.com", embedHtml, "text/html", "UTF-8", "https://www.youtube.com")
+                                if (webView.url?.contains(video.youtubeVideoId) != true) {
+                                    webView.loadUrl(videoPlayerUrl)
                                 }
                             },
                             modifier = Modifier.fillMaxSize()
@@ -645,7 +725,8 @@ fun VideoPlayerScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(Color(0xFF161622))
+                            .background(Color(0xFF13131D))
+                            .border(BorderStroke(1.dp, Color(0xFF232334)), RoundedCornerShape(0.dp))
                             .padding(horizontal = 14.dp, vertical = 6.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
@@ -654,25 +735,31 @@ fun VideoPlayerScreen(
                             // -10s Rewind
                             IconButton(
                                 onClick = {
-                                    webViewRef?.evaluateJavascript("seekRelative(-10);", null)
+                                    sendPlayerCommand("seek", -10)
                                 },
-                                modifier = Modifier.size(36.dp)
+                                modifier = Modifier.size(38.dp)
                             ) {
-                                Icon(Icons.Default.FastRewind, contentDescription = "Rewind 10s", tint = Color.White, modifier = Modifier.size(20.dp))
+                                Icon(
+                                    imageVector = Icons.Default.FastRewind,
+                                    contentDescription = "Rewind 10s",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(22.dp)
+                                )
                             }
+
+                            Spacer(modifier = Modifier.width(4.dp))
 
                             // Play / Pause Toggle
                             IconButton(
                                 onClick = {
                                     val newPlaying = !isPlayerPlaying
                                     onTogglePlayPause(newPlaying)
-                                    if (newPlaying) {
-                                        webViewRef?.evaluateJavascript("playVideo();", null)
-                                    } else {
-                                        webViewRef?.evaluateJavascript("pauseVideo();", null)
-                                    }
+                                    sendPlayerCommand(if (newPlaying) "play" else "pause")
                                 },
-                                modifier = Modifier.size(36.dp)
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .background(Color(0xFF261828), CircleShape)
+                                    .border(1.dp, NatokRed.copy(alpha = 0.6f), CircleShape)
                             ) {
                                 Icon(
                                     imageVector = if (isPlayerPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
@@ -682,34 +769,53 @@ fun VideoPlayerScreen(
                                 )
                             }
 
+                            Spacer(modifier = Modifier.width(4.dp))
+
                             // +10s Forward
                             IconButton(
                                 onClick = {
-                                    webViewRef?.evaluateJavascript("seekRelative(10);", null)
+                                    sendPlayerCommand("seek", 10)
                                 },
-                                modifier = Modifier.size(36.dp)
+                                modifier = Modifier.size(38.dp)
                             ) {
-                                Icon(Icons.Default.FastForward, contentDescription = "Forward 10s", tint = Color.White, modifier = Modifier.size(20.dp))
+                                Icon(
+                                    imageVector = Icons.Default.FastForward,
+                                    contentDescription = "Forward 10s",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(22.dp)
+                                )
                             }
+
+                            Spacer(modifier = Modifier.width(4.dp))
 
                             // Replay from start
                             IconButton(
                                 onClick = {
-                                    webViewRef?.evaluateJavascript("replayVideo();", null)
+                                    sendPlayerCommand("replay")
                                     onTogglePlayPause(true)
                                 },
-                                modifier = Modifier.size(36.dp)
+                                modifier = Modifier.size(38.dp)
                             ) {
-                                Icon(Icons.Default.Replay, contentDescription = "Replay", tint = Color(0xFFBBBBCC), modifier = Modifier.size(18.dp))
+                                Icon(
+                                    imageVector = Icons.Default.Replay,
+                                    contentDescription = "Replay",
+                                    tint = Color(0xFFBBBBCC),
+                                    modifier = Modifier.size(20.dp)
+                                )
                             }
                         }
 
                         // Fullscreen Toggle
                         IconButton(
                             onClick = { isFullscreen = true },
-                            modifier = Modifier.size(36.dp)
+                            modifier = Modifier.size(38.dp)
                         ) {
-                            Icon(Icons.Default.Fullscreen, contentDescription = "Fullscreen", tint = Color.White, modifier = Modifier.size(24.dp))
+                            Icon(
+                                imageVector = Icons.Default.Fullscreen,
+                                contentDescription = "Fullscreen",
+                                tint = Color.White,
+                                modifier = Modifier.size(24.dp)
+                            )
                         }
                     }
                 }
@@ -1007,7 +1113,7 @@ fun VideoPlayerScreen(
                                             )
                                         }
                                         Text(
-                                            text = "অফিশিয়াল ইউটিউব সম্প্রচার",
+                                            text = "অফিশিয়াল এইচডি সম্প্রচার",
                                             fontSize = 11.sp,
                                             color = TextSecondary
                                         )
@@ -1133,11 +1239,11 @@ fun VideoPlayerScreen(
             }
         }
 
-        // Custom YouTube URL Input Dialog
+        // Custom Stream URL Input Dialog
         if (showUrlDialog) {
             AlertDialog(
                 onDismissRequest = { showUrlDialog = false },
-                title = { Text("ইউটিউব ভিডিও চালান (YouTube URL)") },
+                title = { Text("ভিডিও লিংক পেস্ট করুন (Stream URL)") },
                 text = {
                     Column {
                         Text(
