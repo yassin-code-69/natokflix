@@ -84,7 +84,6 @@ fun HomeScreen(
     onToggleTheme: () -> Unit = {},
     onPlayCustomUrl: (String) -> Unit = {},
     onSpinTabNavigate: () -> Unit = {},
-    onGameZoneNavigate: () -> Unit = {},
     announcementNotice: String = "",
     isAnnouncementEnabled: Boolean = false,
     categories: List<String> = listOf("সকল নাটক", "Trending Natok", "Korean & Chinese Dubbed", "Romantic Drama", "Comedy Drama", "Bangla Music & Songs"),

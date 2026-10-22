@@ -47,7 +47,6 @@ enum class NavigationTab {
     HOME,
     SHORTS,
     FRIENDS,
-    GAME_ZONE,
     TASK,
     SPIN,
     PROFILE
@@ -115,9 +114,14 @@ class NatokViewModel(application: Application) : AndroidViewModel(application) {
         _searchResults.value = emptyList()
         _isSearching.value = false
     }
-
     init {
-        deviceId = android.provider.Settings.Secure.getString(application.contentResolver, android.provider.Settings.Secure.ANDROID_ID)
+        deviceId = try {
+            android.provider.Settings.Secure.getString(application.contentResolver, android.provider.Settings.Secure.ANDROID_ID)
+                ?.ifBlank { null }
+                ?: "device_${System.currentTimeMillis()}"
+        } catch (_: Exception) {
+            "device_${System.currentTimeMillis()}"
+        }
         // Automatically fetch live YouTube API video feeds for Home and Shorts
         loadYouTubeCategoryFeed("সকল নাটক")
         loadYouTubeShortsFeed()
@@ -494,9 +498,14 @@ class NatokViewModel(application: Application) : AndroidViewModel(application) {
     init {
         initializeDailyTasks()
         viewModelScope.launch {
-            repository.ensureInitialUser()
-            // Fetch daily ad stats
-            _totalAdsWatchedToday.value = repository.getDailyAdCount(user.value.id)
+            try {
+                repository.ensureInitialUser()
+            } catch (_: Exception) {}
+            try {
+                _totalAdsWatchedToday.value = repository.getDailyAdCount(user.value.id)
+            } catch (_: Exception) {}
+        }
+        viewModelScope.launch {
             delay(2200)
             _currentScreen.value = AppScreen.APP_OPEN_AD
         }

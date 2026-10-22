@@ -11,6 +11,8 @@ class MyApplication : Application() {
             if (FirebaseApp.getApps(this).isEmpty()) {
                 FirebaseApp.initializeApp(this)
             }
+        } catch (_: Exception) {}
+        try {
             MobileAds.initialize(this) {}
         } catch (_: Exception) {}
     }

@@ -30,11 +30,7 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material.icons.filled.Gamepad
-import androidx.compose.material.icons.outlined.Gamepad
 import androidx.compose.material.icons.outlined.Assignment
-import androidx.compose.foundation.layout.offset
-import com.example.ui.screens.GameZoneScreen
 import androidx.compose.material.icons.outlined.Casino
 import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material.icons.outlined.Home
@@ -487,45 +483,6 @@ fun VideoEarnApp(
                                     modifier = Modifier.testTag("nav_item_friends")
                                 )
 
-                                // 3.5 Game Zone Tab with "গেম খেলে কয়েন জিতুন" Badge
-                                NavigationBarItem(
-                                    selected = selectedTab == NavigationTab.GAME_ZONE,
-                                    onClick = { viewModel.selectTab(NavigationTab.GAME_ZONE) },
-                                    icon = {
-                                        Box {
-                                            Icon(
-                                                imageVector = if (selectedTab == NavigationTab.GAME_ZONE) Icons.Filled.Gamepad else Icons.Outlined.Gamepad,
-                                                contentDescription = "Game Zone",
-                                                modifier = Modifier.size(20.dp)
-                                            )
-                                            // Tiny glowing badge on top of icon
-                                            Box(
-                                                modifier = Modifier
-                                                    .align(Alignment.TopEnd)
-                                                    .offset(x = 12.dp, y = (-4).dp)
-                                                    .background(NatokGold, RoundedCornerShape(4.dp))
-                                                    .padding(horizontal = 3.dp, vertical = 1.dp)
-                                            ) {
-                                                Text(
-                                                    text = "গেম খেলে কয়েন জিতুন",
-                                                    fontSize = 5.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = Color.Black
-                                                )
-                                            }
-                                        }
-                                    },
-                                    label = { Text("গেম জোন", fontSize = 9.sp) },
-                                    colors = NavigationBarItemDefaults.colors(
-                                        selectedIconColor = NatokRed,
-                                        selectedTextColor = NatokRed,
-                                        indicatorColor = Color.Transparent,
-                                        unselectedIconColor = Color(0xFF888899),
-                                        unselectedTextColor = Color(0xFF888899)
-                                    ),
-                                    modifier = Modifier.testTag("nav_item_game_zone")
-                                )
-
                                 // 4. Tasks
                                 NavigationBarItem(
                                     selected = selectedTab == NavigationTab.TASK,
@@ -637,7 +594,6 @@ fun VideoEarnApp(
                                             onToggleTheme = { viewModel.toggleTheme() },
                                             onPlayCustomUrl = { url -> viewModel.playCustomYouTubeUrl(url) },
                                             onSpinTabNavigate = { viewModel.selectTab(NavigationTab.SPIN) },
-                                            onGameZoneNavigate = { viewModel.selectTab(NavigationTab.GAME_ZONE) },
                                             announcementNotice = announcementNotice,
                                             isAnnouncementEnabled = isAnnouncementEnabled,
                                             categories = categoriesList,
@@ -678,19 +634,6 @@ fun VideoEarnApp(
                                             onRejectFriendRequest = { id -> viewModel.rejectFriendRequest(id) }
                                         )
                                     }
-
-                NavigationTab.GAME_ZONE -> {
-                    GameZoneScreen(
-                        user = user,
-                        totalAdsWatched = totalAdsWatchedToday,
-                        roomCode = roomCode,
-                        onWatchAd = { viewModel.watchRewardedAd() },
-                        onCreateRoom = { viewModel.createRoom() },
-                        onJoinRoom = { code -> viewModel.joinRoom(code) },
-                        onDeductStake = { stake -> viewModel.deductGameStake(stake) },
-                        onRewardWinner = { stake, outcome -> viewModel.processGameResult(stake, outcome) }
-                    )
-                }
 
                                     NavigationTab.TASK -> {
                                         TaskScreen(

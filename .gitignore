@@ -49,13 +49,7 @@ Desktop.ini
 .env.test.local
 .env.production.local
 
-# Flutter/Dart (If they exist in root or subdirectories)
-.dart_tool/
-.packages
-.pub-cache/
-.pub/
-build/
-flutter_*.png
+# Log files
 *.log
 
 # C/C++ (NDK)

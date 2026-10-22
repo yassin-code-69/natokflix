@@ -79,9 +79,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.YouTubePlayer
-import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.listeners.AbstractYouTubePlayerListener
-import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.views.YouTubePlayerView
 import coil.compose.AsyncImage
 import com.example.data.model.VideoItem
 import com.example.ui.components.AdMobBanner
@@ -121,6 +118,7 @@ fun VideoPlayerScreen(
     var isLiked by remember { mutableStateOf(false) }
     var isSaved by remember { mutableStateOf(false) }
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
+    var isDirectYouTubeMode by remember { mutableStateOf(false) }
 
     var showUrlDialog by remember { mutableStateOf(false) }
     var customUrlInput by remember { mutableStateOf("") }
@@ -141,62 +139,54 @@ fun VideoPlayerScreen(
         <head>
             <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
             <style>
+                * { box-sizing: border-box; }
                 body { margin: 0; padding: 0; background-color: #000; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; }
                 #player { width: 100%; height: 100%; border: none; }
             </style>
         </head>
         <body>
-            <div id="player"></div>
+            <iframe id="player"
+                src="https://www.youtube-nocookie.com/embed/${video.youtubeVideoId}?autoplay=1&playsinline=1&controls=1&rel=0&modestbranding=1&enablejsapi=1&origin=https://www.youtube.com&widget_referrer=https://www.youtube.com"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                referrerpolicy="strict-origin-when-cross-origin"
+                allowfullscreen>
+            </iframe>
             <script>
-                var tag = document.createElement('script');
-                tag.src = "https://www.youtube.com/iframe_api";
-                var firstScriptTag = document.getElementsByTagName('script')[0];
-                firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
-
-                var player;
-                function onYouTubeIframeAPIReady() {
-                    player = new YT.Player('player', {
-                        height: '100%',
-                        width: '100%',
-                        videoId: '${video.youtubeVideoId}',
-                        playerVars: {
-                            'autoplay': 1,
-                            'playsinline': 1,
-                            'controls': 1,
-                            'rel': 0,
-                            'modestbranding': 1,
-                            'fs': 1
-                        },
-                        events: {
-                            'onReady': onPlayerReady,
-                            'onStateChange': onPlayerStateChange
-                        }
-                    });
-                }
-                function onPlayerReady(event) {
-                    event.target.playVideo();
-                }
-                function onPlayerStateChange(event) {
-                    if (event.data == YT.PlayerState.ENDED) {
-                        if (window.AndroidBridge) {
-                            window.AndroidBridge.onVideoEnded();
-                        }
+                function playVideo() {
+                    var iframe = document.getElementById('player');
+                    if (iframe && iframe.contentWindow) {
+                        iframe.contentWindow.postMessage('{"event":"command","func":"playVideo","args":""}', '*');
                     }
                 }
-                function playVideo() { if (player && player.playVideo) player.playVideo(); }
-                function pauseVideo() { if (player && player.pauseVideo) player.pauseVideo(); }
+                function pauseVideo() {
+                    var iframe = document.getElementById('player');
+                    if (iframe && iframe.contentWindow) {
+                        iframe.contentWindow.postMessage('{"event":"command","func":"pauseVideo","args":""}', '*');
+                    }
+                }
                 function seekRelative(seconds) {
-                    if (player && player.getCurrentTime && player.seekTo) {
-                        var curr = player.getCurrentTime();
-                        player.seekTo(curr + seconds, true);
+                    var iframe = document.getElementById('player');
+                    if (iframe && iframe.contentWindow) {
+                        iframe.contentWindow.postMessage('{"event":"command","func":"seekTo","args":[' + (seconds > 0 ? '+10' : '-10') + ', true]}', '*');
                     }
                 }
                 function replayVideo() {
-                    if (player && player.seekTo) {
-                        player.seekTo(0, true);
-                        player.playVideo();
+                    var iframe = document.getElementById('player');
+                    if (iframe && iframe.contentWindow) {
+                        iframe.contentWindow.postMessage('{"event":"command","func":"seekTo","args":[0, true]}', '*');
+                        iframe.contentWindow.postMessage('{"event":"command","func":"playVideo","args":""}', '*');
                     }
                 }
+                window.addEventListener('message', function(event) {
+                    try {
+                        var data = JSON.parse(event.data);
+                        if (data.event === 'onStateChange' && data.info === 0) {
+                            if (window.AndroidBridge && window.AndroidBridge.onVideoEnded) {
+                                window.AndroidBridge.onVideoEnded();
+                            }
+                        }
+                    } catch(e) {}
+                });
             </script>
         </body>
         </html>
@@ -222,11 +212,17 @@ fun VideoPlayerScreen(
                             try {
                                 setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
                             } catch (_: Exception) {}
-                            settings.javaScriptEnabled = true
-                            settings.domStorageEnabled = true
-                            settings.mediaPlaybackRequiresUserGesture = false
-                            settings.loadWithOverviewMode = true
-                            settings.useWideViewPort = true
+                            settings.apply {
+                                javaScriptEnabled = true
+                                domStorageEnabled = true
+                                mediaPlaybackRequiresUserGesture = false
+                                loadWithOverviewMode = true
+                                useWideViewPort = true
+                                allowFileAccess = true
+                                allowContentAccess = true
+                                databaseEnabled = true
+                                userAgentString = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36"
+                            }
                             addJavascriptInterface(object {
                                 @android.webkit.JavascriptInterface
                                 fun onVideoEnded() {
@@ -234,9 +230,37 @@ fun VideoPlayerScreen(
                                 }
                             }, "AndroidBridge")
                             webChromeClient = WebChromeClient()
-                            webViewClient = WebViewClient()
-                            loadDataWithBaseURL("https://www.youtube.com", embedHtml, "text/html", "UTF-8", null)
+                            webViewClient = object : WebViewClient() {
+                                override fun onPageFinished(view: WebView?, url: String?) {
+                                    super.onPageFinished(view, url)
+                                    if (isDirectYouTubeMode) {
+                                        val hideHeaderCss = """
+                                            javascript:(function() {
+                                                var style = document.createElement('style');
+                                                style.innerHTML = 'header, ytm-mobile-topbar-renderer, ytm-pivot-bar-renderer, .pivot-bar, ytm-comment-section-renderer, #comments, .watch-below-the-player { display: none !important; }';
+                                                document.head.appendChild(style);
+                                            })()
+                                        """.trimIndent()
+                                        view?.evaluateJavascript(hideHeaderCss, null)
+                                    }
+                                }
+                            }
+                            if (isDirectYouTubeMode) {
+                                loadUrl("https://m.youtube.com/watch?v=${video.youtubeVideoId}")
+                            } else {
+                                loadDataWithBaseURL("https://www.youtube.com", embedHtml, "text/html", "UTF-8", "https://www.youtube.com")
+                            }
                             webViewRef = this
+                        }
+                    },
+                    update = { webView ->
+                        webViewRef = webView
+                        if (isDirectYouTubeMode) {
+                            if (webView.url?.contains(video.youtubeVideoId) != true) {
+                                webView.loadUrl("https://m.youtube.com/watch?v=${video.youtubeVideoId}")
+                            }
+                        } else {
+                            webView.loadDataWithBaseURL("https://www.youtube.com", embedHtml, "text/html", "UTF-8", "https://www.youtube.com")
                         }
                     },
                     modifier = Modifier.fillMaxSize()
@@ -327,6 +351,32 @@ fun VideoPlayerScreen(
                                 Text("URL পেস্ট", fontSize = 11.sp, color = Color.White)
                             }
 
+                            Spacer(modifier = Modifier.width(6.dp))
+
+                            // Player Direct/Embed Switch
+                            Button(
+                                onClick = { isDirectYouTubeMode = !isDirectYouTubeMode },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (isDirectYouTubeMode) NatokRed else Color(0xFF262638)
+                                ),
+                                shape = RoundedCornerShape(16.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                modifier = Modifier.height(32.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Tv,
+                                    contentDescription = null,
+                                    tint = NatokGold,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = if (isDirectYouTubeMode) "ডাইরেক্ট মোড" else "স্মুথ প্লেয়ার",
+                                    fontSize = 11.sp,
+                                    color = Color.White
+                                )
+                            }
+
                             Spacer(modifier = Modifier.width(8.dp))
 
                             // Total Session Coins Badge
@@ -358,17 +408,59 @@ fun VideoPlayerScreen(
                     ) {
                         AndroidView(
                             factory = { ctx ->
-                                YouTubePlayerView(ctx).apply {
-                                    enableAutomaticInitialization = false
-                                    initialize(object : AbstractYouTubePlayerListener() {
-                                        override fun onReady(youTubePlayer: YouTubePlayer) {
-                                            youTubePlayer.loadVideo(video.youtubeVideoId, 0f)
+                                WebView(ctx).apply {
+                                    try {
+                                        setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
+                                    } catch (_: Exception) {}
+                                    settings.apply {
+                                        javaScriptEnabled = true
+                                        domStorageEnabled = true
+                                        mediaPlaybackRequiresUserGesture = false
+                                        loadWithOverviewMode = true
+                                        useWideViewPort = true
+                                        allowFileAccess = true
+                                        allowContentAccess = true
+                                        databaseEnabled = true
+                                        userAgentString = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36"
+                                    }
+                                    addJavascriptInterface(object {
+                                        @android.webkit.JavascriptInterface
+                                        fun onVideoEnded() {
+                                            onVideoEnded()
                                         }
-                                        override fun onError(youTubePlayer: YouTubePlayer, error: com.pierfrancescosoffritti.androidyoutubeplayer.core.player.PlayerConstants.PlayerError) {
-                                            // Handle error silently, perhaps show a toast or message
-                                            android.widget.Toast.makeText(ctx, "Video unavailable", android.widget.Toast.LENGTH_SHORT).show()
+                                    }, "AndroidBridge")
+                                    webChromeClient = WebChromeClient()
+                                    webViewClient = object : WebViewClient() {
+                                        override fun onPageFinished(view: WebView?, url: String?) {
+                                            super.onPageFinished(view, url)
+                                            if (isDirectYouTubeMode) {
+                                                val hideHeaderCss = """
+                                                    javascript:(function() {
+                                                        var style = document.createElement('style');
+                                                        style.innerHTML = 'header, ytm-mobile-topbar-renderer, ytm-pivot-bar-renderer, .pivot-bar, ytm-comment-section-renderer, #comments, .watch-below-the-player { display: none !important; }';
+                                                        document.head.appendChild(style);
+                                                    })()
+                                                """.trimIndent()
+                                                view?.evaluateJavascript(hideHeaderCss, null)
+                                            }
                                         }
-                                    })
+                                    }
+                                    if (isDirectYouTubeMode) {
+                                        loadUrl("https://m.youtube.com/watch?v=${video.youtubeVideoId}")
+                                    } else {
+                                        loadDataWithBaseURL("https://www.youtube.com", embedHtml, "text/html", "UTF-8", "https://www.youtube.com")
+                                    }
+                                    webViewRef = this
+                                }
+                            },
+                            update = { webView ->
+                                webViewRef = webView
+                                if (isDirectYouTubeMode) {
+                                    if (webView.url?.contains(video.youtubeVideoId) != true) {
+                                        webView.loadUrl("https://m.youtube.com/watch?v=${video.youtubeVideoId}")
+                                    }
+                                } else {
+                                    webView.loadDataWithBaseURL("https://www.youtube.com", embedHtml, "text/html", "UTF-8", "https://www.youtube.com")
                                 }
                             },
                             modifier = Modifier.fillMaxSize()

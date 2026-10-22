@@ -15,12 +15,21 @@ android {
   defaultConfig {
     applicationId = "com.example"
     minSdk = 24
-    targetSdk = 36
+    targetSdk = 34
     versionCode = 1
     versionName = "1.0"
     multiDexEnabled = true
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+  }
+
+  packaging {
+    jniLibs {
+      useLegacyPackaging = true
+    }
+    resources {
+      excludes += "/META-INF/{AL2.0,LGPL2.1}"
+    }
   }
 
   signingConfigs {
